@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browser Time Tracker</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+    }
+    .sub {
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 18px;
+    }
+    .card {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    label {
+      display: block;
+      font-size: 0.92rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input, select, textarea, button {
+      font: inherit;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+    }
+    button {
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+    }
+    button.primary { background: #0c4a6e; border-color: #075985; }
+    button.good { background: #14532d; border-color: #166534; }
+    button.warn { background: #78350f; border-color: #92400e; }
+    button.bad { background: #7f1d1d; border-color: #991b1b; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .metric {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .metric .box {
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+    }
+    .metric .k { color: var(--muted); font-size: 0.85rem; }
+    .metric .v { font-size: 1.5rem; font-weight: 700; margin-top: 6px; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #0b1220;
+      border: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-2);
+    }
+    .dot.idle { background: var(--warn); }
+    .dot.stopped { background: var(--danger); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.95rem;
+    }
+    th, td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .small { color: var(--muted); font-size: 0.88rem; }
+    .footer { margin-top: 18px; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+    .full { grid-column: 1 / -1; }
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #172033;
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .metric { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Browser Time Tracker</h1>
+    <div class="sub">
+      A self-contained time tracker that runs in a browser tab, stores data locally, auto-detects idle time, and exports CSV. No installer. No binary. Just the browser being its weirdly overqualified self.
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div id="status" class="status"><span id="dot" class="dot stopped"></span><span id="statusText">Stopped</span></div>
+
+        <div class="row">
+          <div style="flex:2; min-width:240px;">
+            <label for="project">Project</label>
+            <input id="project" placeholder="e.g., EBRD workshop prep" />
+          </div>
+          <div style="flex:1; min-width:180px;">
+            <label for="idleMinutes">Idle threshold (minutes)</label>
+            <select id="idleMinutes">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+              <option value="15">15</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 14px;">
+          <button id="startBtn" class="primary">Start</button>
+          <button id="stopBtn" class="warn" disabled>Stop</button>
+          <button id="resumeBtn" class="good" disabled>Resume from idle</button>
+          <button id="newProjectBtn">Switch project</button>
+        </div>
+
+        <div class="metric">
+          <div class="box">
+            <div class="k">Current active time</div>
+            <div id="currentActive" class="v mono">00:00:00</div>
+          </div>
+          <div class="box">
+            <div class="k">Current idle time</div>
+            <div id="currentIdle" class="v mono">00:00:00</div>
+          </div>
+          <div class="box">
+            <div class="k">Today total active</div>
+            <div id="todayTotal" class="v mono">00:00:00</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          Keep this tab open while you work. Activity is detected from keyboard, mouse, scrolling, clicking, and page focus inside the browser. When activity stops past the threshold, the tracker marks you idle and closes the active segment automatically.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between;">
+          <div>
+            <strong>Project totals</strong>
+            <div class="small">Computed from recorded active segments</div>
+          </div>
+          <div class="row">
+            <button id="exportBtn">Export CSV</button>
+            <button id="clearBtn" class="bad">Clear all data</button>
+          </div>
+        </div>
+        <table id="totalsTable">
+          <thead>
+            <tr><th>Project</th><th>Active time</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="card full">
+        <div class="row" style="justify-content: space-between; align-items: end;">
+          <div>
+            <strong>Activity log</strong>
+            <div class="small">Each active block and idle block is stored as a segment</div>
+          </div>
+          <div class="small">
+            <span class="pill">Storage: localStorage</span>
+            <span class="pill">Format: segment log</span>
+            <span class="pill">Export: CSV</span>
+          </div>
+        </div>
+        <table id="logTable">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Project</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'browserTimeTracker.v1';
+
+    const state = loadState();
+
+    const els = {
+      project: document.getElementById('project'),
+      idleMinutes: document.getElementById('idleMinutes'),
+      startBtn: document.getElementById('startBtn'),
+      stopBtn: document.getElementById('stopBtn'),
+      resumeBtn: document.getElementById('resumeBtn'),
+      newProjectBtn: document.getElementById('newProjectBtn'),
+      exportBtn: document.getElementById('exportBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      statusText: document.getElementById('statusText'),
+      dot: document.getElementById('dot'),
+      currentActive: document.getElementById('currentActive'),
+      currentIdle: document.getElementById('currentIdle'),
+      todayTotal: document.getElementById('todayTotal'),
+      totalsTableBody: document.querySelector('#totalsTable tbody'),
+      logTableBody: document.querySelector('#logTable tbody'),
+    };
+
+    els.project.value = state.currentProject || '';
+    els.idleMinutes.value = String(state.idleThresholdMinutes || 5);
+
+    function defaultState() {
+      return {
+        currentProject: '',
+        idleThresholdMinutes: 5,
+        tracking: false,
+        status: 'stopped', // stopped | active | idle
+        activeSegmentStart: null,
+        idleSegmentStart: null,
+        lastActivityTs: null,
+        segments: []
+      };
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return defaultState();
+        return { ...defaultState(), ...JSON.parse(raw) };
+      } catch {
+        return defaultState();
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function now() {
+      return Date.now();
+    }
+
+    function fmtDuration(ms) {
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      return [h, m, sec].map(v => String(v).padStart(2, '0')).join(':');
+    }
+
+    function fmtDateTime(ts) {
+      const d = new Date(ts);
+      return d.toLocaleString();
+    }
+
+    function sameLocalDay(tsA, tsB) {
+      const a = new Date(tsA), b = new Date(tsB);
+      return a.getFullYear() === b.getFullYear() &&
+             a.getMonth() === b.getMonth() &&
+             a.getDate() === b.getDate();
+    }
+
+    function addSegment(type, project, start, end) {
+      if (!start || !end || end <= start) return;
+      state.segments.push({ type, project: project || '', start, end });
+      saveState();
+    }
+
+    function closeActiveSegment(endTs) {
+      if (state.activeSegmentStart) {
+        addSegment('active', state.currentProject, state.activeSegmentStart, endTs);
+        state.activeSegmentStart = null;
+      }
+    }
+
+    function closeIdleSegment(endTs) {
+      if (state.idleSegmentStart) {
+        addSegment('idle', state.currentProject, state.idleSegmentStart, endTs);
+        state.idleSegmentStart = null;
+      }
+    }
+
+    function setStatus(next) {
+      state.status = next;
+      if (next === 'active') {
+        els.statusText.textContent = 'Tracking active time';
+        els.dot.className = 'dot';
+      } else if (next === 'idle') {
+        els.statusText.textContent = 'Idle';
+        els.dot.className = 'dot idle';
+      } else {
+        els.statusText.textContent = 'Stopped';
+        els.dot.className = 'dot stopped';
+      }
+      els.startBtn.disabled = state.tracking;
+      els.stopBtn.disabled = !state.tracking;
+      els.resumeBtn.disabled = !(state.tracking && state.status === 'idle');
+    }
+
+    function beginTracking() {
+      const project = els.project.value.trim();
+      if (!project) {
+        alert('Enter a project name first.');
+        return;
+      }
+      state.currentProject = project;
+      state.idleThresholdMinutes = Number(els.idleMinutes.value);
+      state.tracking = true;
+      state.lastActivityTs = now();
+      closeIdleSegment(now());
+      if (!state.activeSegmentStart) state.activeSegmentStart = now();
+      setStatus('active');
+      saveState();
+      render();
+    }
+
+    function stopTracking() {
+      const t = now();
+      closeActiveSegment(t);
+      closeIdleSegment(t);
+      state.tracking = false;
+      state.lastActivityTs = null;
+      setStatus('stopped');
+      saveState();
+      render();
+    }
+
+    function goIdle(idleStartTs) {
+      if (!state.tracking || state.status === 'idle') return;
+      closeActiveSegment(idleStartTs);
+      state.idleSegmentStart = idleStartTs;
+      setStatus('idle');
+      saveState();
+      render();
+    }
+
+    function resumeFromIdle() {
+      if (!state.tracking) return;
+      const t = now();
+      closeIdleSegment(t);
+      state.lastActivityTs = t;
+      state.activeSegmentStart = t;
+      setStatus('active');
+      saveState();
+      render();
+    }
+
+    function noteActivity() {
+      if (!state.tracking) return;
+      const t = now();
+      const wasIdle = state.status === 'idle';
+      state.lastActivityTs = t;
+      if (wasIdle) {
+        closeIdleSegment(t);
+        state.activeSegmentStart = t;
+        setStatus('active');
+      } else if (state.status === 'stopped') {
+        state.activeSegmentStart = t;
+        setStatus('active');
+      }
+      saveState();
+    }
+
+    function switchProject() {
+      const nextProject = prompt('New project name:', state.currentProject || '');
+      if (!nextProject || !nextProject.trim()) return;
+      const t = now();
+      if (state.tracking) {
+        if (state.status === 'active') {
+          closeActiveSegment(t);
+          state.currentProject = nextProject.trim();
+          state.activeSegmentStart = t;
+        } else if (state.status === 'idle') {
+          closeIdleSegment(t);
+          state.currentProject = nextProject.trim();
+          state.idleSegmentStart = t;
+        }
+      } else {
+        state.currentProject = nextProject.trim();
+      }
+      els.project.value = state.currentProject;
+      saveState();
+      render();
+    }
+
+    function computeProjectTotals() {
+      const totals = new Map();
+      for (const seg of state.segments) {
+        if (seg.type !== 'active') continue;
+        const dur = seg.end - seg.start;
+        totals.set(seg.project || '(none)', (totals.get(seg.project || '(none)') || 0) + dur);
+      }
+      return [...totals.entries()].sort((a, b) => b[1] - a[1]);
+    }
+
+    function computeTodayTotal() {
+      const t = now();
+      let total = 0;
+      for (const seg of state.segments) {
+        if (seg.type !== 'active') continue;
+        if (sameLocalDay(seg.start, t)) total += (seg.end - seg.start);
+      }
+      if (state.tracking && state.status === 'active' && state.activeSegmentStart && sameLocalDay(state.activeSegmentStart, t)) {
+        total += t - state.activeSegmentStart;
+      }
+      return total;
+    }
+
+    function liveActiveDuration() {
+      if (state.tracking && state.status === 'active' && state.activeSegmentStart) {
+        return now() - state.activeSegmentStart;
+      }
+      return 0;
+    }
+
+    function liveIdleDuration() {
+      if (state.tracking && state.status === 'idle' && state.idleSegmentStart) {
+        return now() - state.idleSegmentStart;
+      }
+      return 0;
+    }
+
+    function renderTotals() {
+      const totals = computeProjectTotals();
+      els.totalsTableBody.innerHTML = totals.map(([project, ms]) =>
+        `<tr><td>${escapeHtml(project)}</td><td class="mono">${fmtDuration(ms)}</td></tr>`
+      ).join('') || '<tr><td colspan="2" class="small">No active segments yet.</td></tr>';
+    }
+
+    function renderLog() {
+      const live = [];
+      if (state.tracking && state.status === 'active' && state.activeSegmentStart) {
+        live.push({ type: 'active', project: state.currentProject, start: state.activeSegmentStart, end: now(), live: true });
+      }
+      if (state.tracking && state.status === 'idle' && state.idleSegmentStart) {
+        live.push({ type: 'idle', project: state.currentProject, start: state.idleSegmentStart, end: now(), live: true });
+      }
+      const rows = [...state.segments, ...live].sort((a, b) => b.start - a.start).slice(0, 200);
+      els.logTableBody.innerHTML = rows.map(seg => {
+        const dur = seg.end - seg.start;
+        return `<tr>
+          <td>${seg.type === 'active' ? 'Active' : 'Idle'}${seg.live ? ' <span class="small">(live)</span>' : ''}</td>
+          <td>${escapeHtml(seg.project || '')}</td>
+          <td>${fmtDateTime(seg.start)}</td>
+          <td>${fmtDateTime(seg.end)}</td>
+          <td class="mono">${fmtDuration(dur)}</td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="5" class="small">No segments recorded yet.</td></tr>';
+    }
+
+    function render() {
+      els.currentActive.textContent = fmtDuration(liveActiveDuration());
+      els.currentIdle.textContent = fmtDuration(liveIdleDuration());
+      els.todayTotal.textContent = fmtDuration(computeTodayTotal());
+      renderTotals();
+      renderLog();
+      setStatus(state.tracking ? state.status : 'stopped');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function exportCSV() {
+      const rows = [['type', 'project', 'start_iso', 'end_iso', 'duration_seconds']];
+      for (const seg of state.segments) {
+        rows.push([
+          seg.type,
+          seg.project || '',
+          new Date(seg.start).toISOString(),
+          new Date(seg.end).toISOString(),
+          Math.round((seg.end - seg.start) / 1000)
+        ]);
+      }
+      const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `browser-time-tracker-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function csvCell(value) {
+      const s = String(value ?? '');
+      return /[",\n]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
+    }
+
+    function clearAllData() {
+      const ok = confirm('Delete all locally stored tracking data?');
+      if (!ok) return;
+      localStorage.removeItem(STORAGE_KEY);
+      Object.assign(state, defaultState());
+      els.project.value = '';
+      els.idleMinutes.value = '5';
+      render();
+    }
+
+    els.startBtn.addEventListener('click', beginTracking);
+    els.stopBtn.addEventListener('click', stopTracking);
+    els.resumeBtn.addEventListener('click', resumeFromIdle);
+    els.newProjectBtn.addEventListener('click', switchProject);
+    els.exportBtn.addEventListener('click', exportCSV);
+    els.clearBtn.addEventListener('click', clearAllData);
+    els.idleMinutes.addEventListener('change', () => {
+      state.idleThresholdMinutes = Number(els.idleMinutes.value);
+      saveState();
+    });
+    els.project.addEventListener('change', () => {
+      state.currentProject = els.project.value.trim();
+      saveState();
+    });
+
+    ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'focus'].forEach(evt => {
+      window.addEventListener(evt, noteActivity, { passive: true });
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') noteActivity();
+    });
+
+    setInterval(() => {
+      if (state.tracking && state.status === 'active' && state.lastActivityTs) {
+        const thresholdMs = (state.idleThresholdMinutes || 5) * 60 * 1000;
+        const idleFor = now() - state.lastActivityTs;
+        if (idleFor >= thresholdMs) {
+          goIdle(state.lastActivityTs + thresholdMs);
+        }
+      }
+      render();
+    }, 1000);
+
+    // --- Auto-start tracking on page load ---
+    (function autoStart(){
+      if(!state.tracking){
+        if(!state.currentProject){
+          state.currentProject = 'General';
+          els.project.value = state.currentProject;
+        }
+        state.idleThresholdMinutes = Number(els.idleMinutes.value) || 5;
+        state.tracking = true;
+        state.lastActivityTs = now();
+        state.activeSegmentStart = now();
+        setStatus('active');
+        saveState();
+      }
+    })();
+
+    render();
+  </script>
+</body>
+</html>
