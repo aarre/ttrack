@@ -138,6 +138,27 @@ def fmt_hms(seconds: int) -> str:
 def fmt_short(ts: dt.datetime) -> str:
     return ts.strftime("%Y-%m-%d %H:%M:%S")
 
+def fmt_report_timestamp(ts: Optional[str]) -> str:
+    """Format a stored ISO timestamp for HTML display.
+
+    Parameters
+    ----------
+    ts : str or None
+        ISO 8601 timestamp from the persisted segment data.
+
+    Returns
+    -------
+    str
+        A human-readable date-time string without the ISO ``T`` separator
+        or timezone offset. If parsing fails, the original value is returned.
+    """
+    if not ts:
+        return ""
+    try:
+        return fmt_short(parse_iso(ts))
+    except Exception:
+        return ts
+
 def date_str(ts: dt.datetime) -> str:
     return ts.strftime("%Y-%m-%d")
 
@@ -386,13 +407,14 @@ class Tracker:
 
         recent_rows = []
         for row in sorted(rows, key=lambda r: r.get("start_iso", ""), reverse=True)[:500]:
+            # Keep logs machine-friendly in ISO format while rendering friendlier timestamps in the report table.
             recent_rows.append(
                 "<tr>"
                 f"<td>{html_escape(row.get('kind', ''))}</td>"
                 f"<td>{html_escape(row.get('process_name') or '')}</td>"
                 f"<td>{html_escape(row.get('window_title') or '')}</td>"
-                f"<td class='mono'>{html_escape(row.get('start_iso') or '')}</td>"
-                f"<td class='mono'>{html_escape(row.get('end_iso') or '')}</td>"
+                f"<td class='mono'>{html_escape(fmt_report_timestamp(row.get('start_iso')))}</td>"
+                f"<td class='mono'>{html_escape(fmt_report_timestamp(row.get('end_iso')))}</td>"
                 f"<td class='mono'>{fmt_hms(int(row.get('duration_seconds') or 0))}</td>"
                 "</tr>"
             )
@@ -508,7 +530,7 @@ class Tracker:
             opacity = "0.9" if kind == "active" else "0.75"
             tooltip = (
                 f"{kind.title()} | {proc or '(unknown)'} | {title} | "
-                f"{row.get('start_iso')} → {row.get('end_iso')} | "
+                f"{fmt_report_timestamp(row.get('start_iso'))} → {fmt_report_timestamp(row.get('end_iso'))} | "
                 f"{fmt_hms(int(row.get('duration_seconds') or 0))}"
             )
             block_id = f"seg{i}"
